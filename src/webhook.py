@@ -7,14 +7,19 @@ import os
 import requests
 from flask import Flask, request, jsonify
 
+
 from bot import handle_message
 
+
 app = Flask(__name__)
+
 
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
 PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_ID", "")
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "learnhub_verify")
 API_URL = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
+
+
 
 
 def send_message(to: str, text: str) -> dict:
@@ -34,6 +39,8 @@ def send_message(to: str, text: str) -> dict:
     return resp.json()
 
 
+
+
 @app.route("/webhook", methods=["GET"])
 def verify():
     """Meta webhook verification handshake."""
@@ -45,29 +52,27 @@ def verify():
     return "Verification failed", 403
 
 
+
+
 @app.route("/webhook", methods=["POST"])
 def incoming():
     """Handle incoming WhatsApp messages."""
     data = request.get_json(force=True, silent=True) or {}
-    try:
-        for entry in data.get("entry", []):
-            for change in entry.get("changes", []):
-                for msg in change.get("value", {}).get("messages", []):
-                    if msg.get("type") != "text":
-                        continue
-                    sender = msg["from"]
-                    text = msg["text"]["body"]
-                    reply = handle_message(text)
-                    send_message(sender, reply)
-    except Exception as e:
-        app.logger.error(f"webhook error: {e}")
+    # Process in background thread so we return 200 immediately
+    # (Meta retries/times out on slow webhooks)
+    import threading
+    def process():
+        try:
+            for entry in data.get("entry", []):
+                for change in entry.get("changes", []):
+                    for msg in change.get("value", {}).get("messages", []):
+                        if msg.get("type") != "text":
+                            continue
+                        sender = msg["from"]
+                        text = msg["text"]["body"]
+                        reply = handle_message(text)
+                        send_message(sender, reply)
+        except Exception as e:
+            app.logger.error(f"webhook error: {e}")
+    threading.Thread(target=process, daemon=True).start()
     return jsonify({"status": "ok"}), 200
-
-
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({"status": "ok", "bot": "LearnHub Assistant"}), 200
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

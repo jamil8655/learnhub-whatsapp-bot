@@ -76,3 +76,8 @@ def incoming():
             app.logger.error(f"webhook error: {e}")
     threading.Thread(target=process, daemon=True).start()
     return jsonify({"status": "ok"}), 200
+
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok", "bot": "LearnHub Assistant"}), 200
